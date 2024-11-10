@@ -1,0 +1,45 @@
+<resources>
+    <string name="app_name">stegnomate</string>
+    <string name="welcome_message">Welcome to Stegnomate</string>
+    <string name="username">Username</string>
+    <string name="password">Password</string>
+    <string name="login">Login</string>
+    <string name="signup">Signup</string>
+
+
+
+    <string name="stego">Stegnography Selection</string>
+
+    <string name="audio">Audio</string>
+    <string name="video">Video</string>
+    <string name="image">Image</string>
+
+
+    <string name="fill_all_fields">Please fill in all fields and upload a file</string>
+
+
+    <string name="encrypt">Encrypt</string>
+    <string name="decrypt">Decrypt</string>
+
+    <string name="encryption_successful">Encryption Successful!</string>
+    <string name="encryption_failed">Encryption Failed: %1$s</string>
+    <string name="storage_failed">Failed to store encrypted file.</string>
+
+
+    <string name="title_encrypt_file">Encrypt File</string>
+    <string name="upload_file">Upload Cover File</string>
+    <string name="etMessage">Enter secret message</string>
+    <string name="etKey">Enter secret key</string>
+
+
+    <string name="download">Download</string>
+
+
+    <!-- Decryption -->
+    <string name="decryption_successful">Decryption Successful</string>
+    <string name="decryption_failed">Decryption Failed</string>
+    <string name="secret_message">Secret message: %1$s</string>
+
+    <string name="title_decrypt_file">Decrypt File</string>
+
+</resources>
