@@ -1,7 +1,6 @@
 package com.example.stegnomate;
 
 import android.util.Log;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -13,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 public class AudioUtils {
 
     private static final String TAG = "AudioUtils";
+    private static final String KEY_MARKER = "KEYMARKER";  // Used to mark the beginning of the key in encrypted data
 
     public static File encryptAudio(File inputFile, String secretMessage, String secretKey, String outputFilePath) {
         File encryptedFile = new File(outputFilePath);
@@ -23,15 +23,17 @@ public class AudioUtils {
             byte[] buffer = new byte[1024];
             int length;
 
-            // Convert the secret message to bytes and encrypt it using XOR
+            // Convert the key and message to bytes, and encrypt them
+            byte[] keyBytes = xorWithKey(KEY_MARKER.getBytes(StandardCharsets.UTF_8), secretKey.getBytes());
             byte[] secretMessageBytes = xorWithKey(secretMessage.getBytes(StandardCharsets.UTF_8), secretKey.getBytes());
-            int messageLength = secretMessageBytes.length;
 
-            // Write the length and the secret message to the file header
-            fos.write(ByteBuffer.allocate(4).putInt(messageLength).array());  // Store length of secret message
-            fos.write(secretMessageBytes);  // Store the encrypted message
+            // Write lengths and contents to the file header
+            fos.write(ByteBuffer.allocate(4).putInt(keyBytes.length).array());  // Key length
+            fos.write(keyBytes);  // Write the encrypted key
+            fos.write(ByteBuffer.allocate(4).putInt(secretMessageBytes.length).array());  // Message length
+            fos.write(secretMessageBytes);  // Write the encrypted message
 
-            // Write the original audio data to the output file without modification
+            // Write the audio data to the output file without modification
             while ((length = fis.read(buffer)) > 0) {
                 fos.write(buffer, 0, length);
             }
@@ -48,11 +50,25 @@ public class AudioUtils {
 
         try {
             byte[] lengthBuffer = new byte[4];
-            encryptedStream.read(lengthBuffer);  // Read the length of the hidden message
-            int messageLength = ByteBuffer.wrap(lengthBuffer).getInt();
 
+            // Read and validate key
+            encryptedStream.read(lengthBuffer);  // Read the key length
+            int keyLength = ByteBuffer.wrap(lengthBuffer).getInt();
+            byte[] keyBytes = new byte[keyLength];
+            encryptedStream.read(keyBytes);  // Read the encrypted key bytes
+
+            // Decrypt and check key validity
+            String extractedKey = new String(xorWithKey(keyBytes, secretKey.getBytes()), StandardCharsets.UTF_8);
+            if (!extractedKey.equals(KEY_MARKER)) {
+                Log.e(TAG, "Decryption failed: Key does not match marker");
+                return null;
+            }
+
+            // Read and decrypt the hidden message
+            encryptedStream.read(lengthBuffer);  // Read message length
+            int messageLength = ByteBuffer.wrap(lengthBuffer).getInt();
             byte[] secretMessageBytes = new byte[messageLength];
-            encryptedStream.read(secretMessageBytes);  // Read the encrypted message bytes
+            encryptedStream.read(secretMessageBytes);  // Read encrypted message bytes
 
             // Decrypt the message using XOR
             byte[] decryptedBytes = xorWithKey(secretMessageBytes, secretKey.getBytes());

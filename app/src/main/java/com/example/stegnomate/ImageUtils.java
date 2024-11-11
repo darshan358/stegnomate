@@ -11,13 +11,19 @@ public class ImageUtils {
 
     private static final String TAG = "ImageUtils";
     private static final String END_MARKER = "111000111"; // Define an end marker for the message
+    private static final String KEY_MARKER = "000111000"; // Define a marker to separate the key and message
 
-    // Encrypt message into an image file
+    // Encrypt message and key into an image file
     public static byte[] encryptImage(File coverFile, String secretMessage, String secretKey) {
         try {
             Bitmap coverBitmap = BitmapFactory.decodeFile(coverFile.getAbsolutePath());
-            String encryptedMessage = encryptMessage(secretMessage, secretKey) + END_MARKER; // Append end marker
-            Bitmap modifiedBitmap = hideMessageInImage(coverBitmap, encryptedMessage);
+
+            // Append the encrypted key with a key marker and then the encrypted message with an end marker
+            String encryptedKey = encryptMessage(secretKey, secretKey) + KEY_MARKER;
+            String encryptedMessage = encryptMessage(secretMessage, secretKey) + END_MARKER;
+            String combinedMessage = encryptedKey + encryptedMessage;
+
+            Bitmap modifiedBitmap = hideMessageInImage(coverBitmap, combinedMessage);
             return bitmapToByteArray(modifiedBitmap);
         } catch (Exception e) {
             Log.e(TAG, "Image Encryption Failed: " + e.getMessage(), e);
@@ -25,18 +31,37 @@ public class ImageUtils {
         }
     }
 
-
-    // Decrypt message from an image file
+    // Decrypt message from an image file, checking the key
     public static String decryptImage(InputStream inputStream, String secretKey) {
         try {
             Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
-            String hiddenMessage = extractMessageFromImage(bitmap);
-            if (hiddenMessage.contains(END_MARKER)) {
-                hiddenMessage = hiddenMessage.split(END_MARKER)[0]; // Stop at the end marker
-                return decryptMessage(hiddenMessage, secretKey);
+            String combinedData = extractMessageFromImage(bitmap);
+
+            // Split the extracted data by the key marker
+            if (combinedData.contains(KEY_MARKER) && combinedData.contains(END_MARKER)) {
+                String[] parts = combinedData.split(KEY_MARKER, 2);
+                String extractedKeyBinary = parts[0];
+
+                // Safely check if the message is properly split
+                if (parts.length < 2) {
+                    Log.e(TAG, "Decryption failed: Incomplete message or key");
+                    return null;
+                }
+
+                String extractedMessageBinary = parts[1].split(END_MARKER, 2)[0];
+
+                // Convert binary data back to text and validate the key
+                String extractedKey = decryptMessage(extractedKeyBinary, secretKey);
+                if (!extractedKey.equals(secretKey)) {
+                    Log.e(TAG, "Decryption failed: Key does not match");
+                    return null; // Key mismatch
+                }
+
+                // If key matches, decrypt and return the message
+                return decryptMessage(extractedMessageBinary, secretKey);
             } else {
-                Log.e(TAG, "End marker not found, incomplete message");
-                return null; // Return null if the end marker is not found
+                Log.e(TAG, "Key or end marker not found, incomplete message");
+                return null;
             }
         } catch (Exception e) {
             Log.e(TAG, "Image Decryption Failed: " + e.getMessage(), e);
@@ -44,10 +69,8 @@ public class ImageUtils {
         }
     }
 
-
-    // Placeholder for encrypting a message (replace with actual AES encryption if needed)
+    // Encrypting message (binary conversion as placeholder)
     private static String encryptMessage(String message, String key) {
-        // Convert to binary string (simulate encryption for demonstration)
         StringBuilder binary = new StringBuilder();
         for (char c : message.toCharArray()) {
             binary.append(String.format("%8s", Integer.toBinaryString(c)).replace(' ', '0'));
@@ -55,21 +78,28 @@ public class ImageUtils {
         return binary.toString();
     }
 
-
-
-    // Placeholder for decrypting a message (replace with actual AES decryption if needed)
+    // Decrypting message (binary to text conversion)
     private static String decryptMessage(String binaryMessage, String key) {
-        // Convert from binary string to text (simulate decryption for demonstration)
+        // Check that binaryMessage length is a multiple of 8
+        if (binaryMessage.length() % 8 != 0) {
+            Log.e(TAG, "Decryption failed: Binary message length is not a multiple of 8");
+            return null;
+        }
+
         StringBuilder message = new StringBuilder();
         for (int i = 0; i < binaryMessage.length(); i += 8) {
-            String byteStr = binaryMessage.substring(i, i + 8);
-            message.append((char) Integer.parseInt(byteStr, 2));
+            String byteStr = binaryMessage.substring(i, Math.min(i + 8, binaryMessage.length()));
+            try {
+                message.append((char) Integer.parseInt(byteStr, 2));
+            } catch (NumberFormatException e) {
+                Log.e(TAG, "Invalid binary sequence: " + byteStr);
+                return null;
+            }
         }
         return message.toString();
     }
 
-
-    // Method to hide a message in an image using LSB
+    // Hide message in image using LSB
     private static Bitmap hideMessageInImage(Bitmap coverBitmap, String message) {
         int messageIndex = 0;
         int messageLength = message.length();
@@ -92,15 +122,17 @@ public class ImageUtils {
         return encodedBitmap;
     }
 
-    // Extract a hidden message from an image using LSB
+    // Extract hidden message from image
     private static String extractMessageFromImage(Bitmap bitmap) {
         StringBuilder message = new StringBuilder();
         for (int x = 0; x < bitmap.getWidth(); x++) {
             for (int y = 0; y < bitmap.getHeight(); y++) {
                 int pixel = bitmap.getPixel(x, y);
                 message.append((pixel & 1) == 1 ? '1' : '0');
-                // Stop if the end marker is detected
-                if (message.length() >= END_MARKER.length() && message.substring(message.length() - END_MARKER.length()).equals(END_MARKER)) {
+
+                // Check for end marker or key marker in extracted message
+                if (message.length() >= END_MARKER.length() &&
+                        message.substring(message.length() - END_MARKER.length()).equals(END_MARKER)) {
                     return message.toString();
                 }
             }
@@ -114,5 +146,4 @@ public class ImageUtils {
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
         return stream.toByteArray();
     }
-
 }
