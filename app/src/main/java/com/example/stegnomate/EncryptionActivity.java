@@ -89,23 +89,19 @@ public class EncryptionActivity extends AppCompatActivity {
 
     private void downloadEncryptedFile() {
         new Thread(() -> {
-            byte[] encryptedData = databaseHelper.getEncryptedFile();
-            if (encryptedData != null) {
-                try {
-                    File downloadFile = saveToFile(encryptedData, "downloaded_encrypted_file");
-                    runOnUiThread(() -> {
-                        Toast.makeText(this, "Encrypted file downloaded: " + downloadFile.getAbsolutePath(), Toast.LENGTH_LONG).show();
-                        openFile(downloadFile);
-                    });
-                } catch (Exception e) {
-                    Log.e(TAG, "Download Failed: " + e.getMessage(), e);
-                    runOnUiThread(() -> Toast.makeText(this, "Download Failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
-                }
+            String encryptedFilePath = databaseHelper.getEncryptedFilePath();
+            if (encryptedFilePath != null) {
+                File encryptedFile = new File(encryptedFilePath);
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "Encrypted file downloaded: " + encryptedFile.getAbsolutePath(), Toast.LENGTH_LONG).show();
+                    openFile(encryptedFile);
+                });
             } else {
                 runOnUiThread(() -> Toast.makeText(this, "No encrypted file found", Toast.LENGTH_SHORT).show());
             }
         }).start();
     }
+
 
     private void encryptFile(String secretMessage, String secretKey) {
         if (coverFileUri == null || secretMessage.isEmpty() || secretKey.isEmpty()) {
@@ -124,7 +120,8 @@ public class EncryptionActivity extends AppCompatActivity {
                 String fileType = getContentResolver().getType(coverFileUri);
                 File encryptedData = processEncryption(tempFile, fileType, secretMessage, secretKey);
 
-                if (encryptedData != null && databaseHelper.storeEncryptedFile(encryptedData, secretKey)) {
+                // Updated: passing the correct parameters to storeEncryptedFile
+                if (encryptedData != null && databaseHelper.storeEncryptedFile(encryptedData.getName(), secretMessage, encryptedData, secretKey)) {
                     runOnUiThread(() -> {
                         tvSuccessMessage.setText(R.string.encryption_successful);
                         tvSuccessMessage.setVisibility(View.VISIBLE);
@@ -139,6 +136,7 @@ public class EncryptionActivity extends AppCompatActivity {
             }
         }).start();
     }
+
 
     private File createTempFile(InputStream inputStream) throws IOException {
         File tempFile = File.createTempFile("cover", null, getCacheDir());
@@ -163,10 +161,11 @@ public class EncryptionActivity extends AppCompatActivity {
             } else if (fileType.startsWith("video/")) {
                 encryptedFile = VideoUtils.encryptVideo(tempFile, secretMessage, secretKey, getExternalFilesDir(null) + "/encrypted_video.mp4");
             }
-
         }
+
         return encryptedFile;
     }
+
 
     private File saveToFile(byte[] data, String fileName) {
         File file = new File(getExternalFilesDir(null), fileName);
