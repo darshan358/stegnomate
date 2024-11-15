@@ -1,11 +1,14 @@
 package com.example.stegnomate;
 
 import android.Manifest;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -18,9 +21,11 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 
 public class EncryptionActivity extends AppCompatActivity {
 
@@ -92,15 +97,79 @@ public class EncryptionActivity extends AppCompatActivity {
             String encryptedFilePath = databaseHelper.getEncryptedFilePath();
             if (encryptedFilePath != null) {
                 File encryptedFile = new File(encryptedFilePath);
-                runOnUiThread(() -> {
-                    Toast.makeText(this, "Encrypted file downloaded: " + encryptedFile.getAbsolutePath(), Toast.LENGTH_LONG).show();
-                    openFile(encryptedFile);
-                });
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    saveFileToDownloadsScopedStorage(encryptedFile);
+                } else {
+                    saveFileToDownloadsLegacy(encryptedFile);
+                }
             } else {
                 runOnUiThread(() -> Toast.makeText(this, "No encrypted file found", Toast.LENGTH_SHORT).show());
             }
         }).start();
     }
+
+    private void saveFileToDownloadsScopedStorage(File sourceFile) {
+        try {
+            // Create metadata for the new file in Downloads
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Downloads.DISPLAY_NAME, sourceFile.getName());
+            values.put(MediaStore.Downloads.MIME_TYPE, getContentResolver().getType(Uri.fromFile(sourceFile)));
+            values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+
+            Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (uri != null) {
+                try (InputStream in = new FileInputStream(sourceFile);
+                     OutputStream out = getContentResolver().openOutputStream(uri)) {
+
+                    byte[] buffer = new byte[1024];
+                    int length;
+                    while ((length = in.read(buffer)) > 0) {
+                        out.write(buffer, 0, length);
+                    }
+
+                    runOnUiThread(() -> {
+                        Toast.makeText(this, "File downloaded to Downloads", Toast.LENGTH_LONG).show();
+                        openFile(new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), sourceFile.getName()));
+                    });
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error saving file to Downloads using Scoped Storage: ", e);
+            runOnUiThread(() -> Toast.makeText(this, "Failed to download file: " + e.getMessage(), Toast.LENGTH_LONG).show());
+        }
+    }
+
+    private void saveFileToDownloadsLegacy(File sourceFile) {
+        File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        File targetFile = new File(downloadsDir, sourceFile.getName());
+
+        try {
+            if (!downloadsDir.exists()) {
+                downloadsDir.mkdirs(); // Create Downloads folder if it doesn't exist
+            }
+
+            try (InputStream in = new FileInputStream(sourceFile);
+                 FileOutputStream out = new FileOutputStream(targetFile)) {
+
+                byte[] buffer = new byte[1024];
+                int length;
+                while ((length = in.read(buffer)) > 0) {
+                    out.write(buffer, 0, length);
+                }
+
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "File downloaded to Downloads: " + targetFile.getAbsolutePath(), Toast.LENGTH_LONG).show();
+                    openFile(targetFile);
+                });
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Error saving file to Downloads in Legacy Mode: ", e);
+            runOnUiThread(() -> Toast.makeText(this, "Failed to download file: " + e.getMessage(), Toast.LENGTH_LONG).show());
+        }
+    }
+
+
 
 
     private void encryptFile(String secretMessage, String secretKey) {
